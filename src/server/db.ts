@@ -1,7 +1,7 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 
 import { env } from "@/env";
-import { PrismaClient } from "@/generated/prisma/client";
+import { Prisma, PrismaClient } from "@/generated/prisma/client";
 
 function createPrismaClient() {
   const adapter = new PrismaPg({ connectionString: env.DATABASE_URL });
@@ -16,4 +16,10 @@ export const prisma = globalForPrisma.prisma ?? createPrismaClient();
 
 if (env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
+}
+
+// 유니크 제약 위반(P2002)인지 확인한다. "조회 후 삽입" 대신 삽입을 시도하고
+// 이 오류를 잡아야 동시 요청에서도 중복이 생기지 않는다.
+export function isUniqueViolation(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
 }

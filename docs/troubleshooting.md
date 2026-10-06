@@ -44,6 +44,14 @@
 - **해결**: Vitest `globalSetup`에서 `DATABASE_URL`을 `TEST_DATABASE_URL` 값으로 바꾼 환경으로 `prisma migrate deploy`를 실행한다. `dotenv`는 이미 설정된 환경변수를 덮어쓰지 않으므로 바꾼 값이 유지된다.
 - **결과**: `pnpm test`만 실행해도 테스트 DB가 최신 스키마로 맞춰진다.
 
+## 테스트 DB에서 필수 컬럼 추가 마이그레이션이 실패 (2026-10-06)
+
+- **문제**: `users`에 `password_hash NOT NULL` 컬럼을 추가하는 마이그레이션이 개발 DB에서는 적용됐는데, `pnpm test`에서는 `column "password_hash" of relation "users" contains null values`(P3018)로 실패했다. 이후 테스트가 하나도 실행되지 않았다.
+- **원인**: 테스트는 각 테스트 시작 전에만 테이블을 비워서, 직전 실행의 마지막 테스트가 만든 사용자 1건이 테스트 DB에 남아 있었다. 행이 있는 테이블에는 기본값 없는 `NOT NULL` 컬럼을 추가할 수 없다. 개발 DB는 `users`가 비어 있어 통과했다. 또한 Prisma는 실패한 마이그레이션을 `_prisma_migrations`에 기록해 두고, 해결 전까지 이후 마이그레이션을 거부한다.
+- **해결**: (1) 테스트 DB의 실패 기록을 `prisma migrate resolve --rolled-back <이름>`으로 되돌림 처리했다. PostgreSQL은 DDL도 트랜잭션으로 처리해서 실패한 `ALTER TABLE`은 아무것도 바꾸지 않았다(컬럼 목록으로 확인). (2) `vitest.global-setup.ts`가 마이그레이션 전에 모든 테이블을 비우도록 바꾸고, DB 이름이 `_test`로 끝나지 않으면 실행을 거부하게 했다.
+- **결과**: 테스트 40개가 통과한다. 테스트 DB는 매 실행마다 빈 상태에서 시작한다.
+- **배운 점**: 이 마이그레이션은 데이터가 있는 운영 DB에서도 똑같이 실패한다. 운영 중인 테이블에 필수 컬럼을 추가할 때는 "nullable로 추가 → 기존 행 채우기 → NOT NULL로 변경"의 세 단계로 나눠야 한다. 지금은 사용자 데이터가 없는 단계라 한 번에 적용했다.
+
 ## Windows에서 줄바꿈 변환 경고 (2026-10-06)
 
 - **문제**: 첫 커밋 때 `LF will be replaced by CRLF` 경고가 나왔다.
