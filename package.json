@@ -19,9 +19,11 @@
     "postinstall": "prisma generate"
   },
   "dependencies": {
+    "@node-rs/argon2": "^2.2.1",
     "@prisma/adapter-pg": "7.10.0",
     "@prisma/client": "7.10.0",
     "next": "16.3.8",
+    "next-auth": "5.0.0-beta.32",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "zod": "^4.6.5"

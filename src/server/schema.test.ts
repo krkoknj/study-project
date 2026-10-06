@@ -6,7 +6,9 @@ import { resetDb } from "@/test/db";
 // 애플리케이션 검증을 거치지 않고 DB에 직접 써도 불변 조건이 지켜지는지 확인한다.
 
 function createUser(name: string) {
-  return prisma.user.create({ data: { email: `${name}@example.com`, name } });
+  return prisma.user.create({
+    data: { email: `${name}@example.com`, name, passwordHash: "not-used-in-this-test" },
+  });
 }
 
 function createRecruitment(authorId: string, overrides: { capacity?: number } = {}) {

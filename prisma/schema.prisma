@@ -42,16 +42,16 @@ enum ApplicationStatus {
   @@map("application_status")
 }
 
-// 컬럼 구성은 Auth.js 어댑터가 기대하는 형태(name, email, emailVerified, image)를 따른다.
-// 비밀번호·세션 관련 테이블은 3단계에서 인증 방식을 정한 뒤 추가한다.
+// 인증은 이메일·비밀번호 + JWT 세션이라 세션·계정 테이블이 없다.
 model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
-  name          String?   @db.VarChar(50)
-  emailVerified DateTime? @map("email_verified") @db.Timestamptz(3)
-  image         String?
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id           String   @id @default(cuid())
+  // 소문자로 정규화한 값을 저장한다 (정규화는 애플리케이션에서 수행).
+  email        String   @unique
+  name         String   @db.VarChar(50)
+  // Argon2id 해시. 알고리즘과 파라미터가 문자열 안에 함께 들어 있다.
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   recruitments Recruitment[]
   applications Application[]
