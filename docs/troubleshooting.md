@@ -30,6 +30,20 @@
 - **해결**: 파일명을 `vitest.config.mts`로 바꿔 이 파일만 ESM으로 명시했다. `"type": "module"`은 프로젝트 전체에 영향을 주므로 쓰지 않았다.
 - **결과**: 경고 없이 테스트가 실행된다.
 
+## migrate dev 후 Prisma 클라이언트에 모델이 없음 (2026-10-06)
+
+- **문제**: `prisma migrate dev`로 테이블을 만들었는데 `src/generated/prisma/models`가 비어 있어 `prisma.user` 같은 접근이 타입에 없었다.
+- **원인**: Prisma 7에서는 `migrate dev`가 클라이언트를 자동으로 다시 생성하지 않는다. 생성 전후 폴더 내용을 비교해 확인했다.
+- **해결**: `db:migrate` 스크립트를 `prisma migrate dev && prisma generate`로 바꿨다.
+- **결과**: `pnpm db:migrate` 한 번으로 DB와 클라이언트 타입이 함께 갱신된다.
+
+## 테스트 DB에 마이그레이션을 적용할 방법이 없음 (2026-10-06)
+
+- **문제**: `prisma migrate deploy`에는 접속 URL을 지정하는 옵션이 없어 테스트 DB를 대상으로 실행할 수 없었다.
+- **원인**: Prisma 7은 접속 URL을 설정 파일(`prisma7.config.ts`)에서만 읽고, 그 파일은 `DATABASE_URL` 환경변수를 참조한다.
+- **해결**: Vitest `globalSetup`에서 `DATABASE_URL`을 `TEST_DATABASE_URL` 값으로 바꾼 환경으로 `prisma migrate deploy`를 실행한다. `dotenv`는 이미 설정된 환경변수를 덮어쓰지 않으므로 바꾼 값이 유지된다.
+- **결과**: `pnpm test`만 실행해도 테스트 DB가 최신 스키마로 맞춰진다.
+
 ## Windows에서 줄바꿈 변환 경고 (2026-10-06)
 
 - **문제**: 첫 커밋 때 `LF will be replaced by CRLF` 경고가 나왔다.

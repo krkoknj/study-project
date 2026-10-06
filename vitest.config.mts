@@ -16,6 +16,9 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/*.test.ts"],
+    globalSetup: ["./vitest.global-setup.ts"],
+    // 모든 테스트 파일이 테스트 DB 하나를 공유하므로 파일 단위로 순서대로 실행한다.
+    fileParallelism: false,
     // 테스트가 개발 DB를 건드리지 않도록 DATABASE_URL을 테스트 DB로 바꿔 넣는다.
     env: {
       DATABASE_URL: testDatabaseUrl,
