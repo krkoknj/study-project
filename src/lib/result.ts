@@ -4,7 +4,14 @@ import { z } from "zod";
 // 예상 가능한 실패(검증 오류, 중복, 권한 없음)는 예외로 던지지 않고 이 형식으로 반환한다.
 // 예상하지 못한 오류(DB 장애 등)만 예외로 둔다.
 
-export type ErrorCode = "VALIDATION" | "CONFLICT" | "INVALID_CREDENTIALS";
+export type ErrorCode =
+  | "VALIDATION"
+  | "CONFLICT"
+  | "INVALID_CREDENTIALS"
+  // 로그인은 했지만 이 작업을 할 권한이 없다.
+  | "FORBIDDEN"
+  // 대상이 없거나 삭제되었다.
+  | "NOT_FOUND";
 
 export type FieldErrors = Record<string, string[]>;
 
