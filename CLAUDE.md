@@ -103,8 +103,9 @@ Next.js 코드를 작성하기 전에 아래 파일의 지침(설치된 버전�
 
 - 개발 서버: `pnpm dev` (3000 포트가 사용 중이면 `pnpm dev --port 3001`)
 - DB 실행: `pnpm db:up` (중지: `pnpm db:down`, 볼륨은 유지된다)
-- 마이그레이션: `pnpm db:migrate` (Prisma 클라이언트만 다시 생성: `pnpm db:generate`)
-- 테스트: `pnpm test` (감시 모드: `pnpm test:watch`). DB가 실행 중이어야 하며 `studygroup_test` DB를 사용한다.
+- 마이그레이션: `pnpm db:migrate` (적용 후 Prisma 클라이언트까지 다시 생성한다. 클라이언트만: `pnpm db:generate`)
+  - CHECK 제약처럼 Prisma로 표현할 수 없는 SQL은 `pnpm prisma migrate dev --create-only --name <이름>`으로 파일만 만든 뒤 직접 추가한다.
+- 테스트: `pnpm test` (감시 모드: `pnpm test:watch`). DB가 실행 중이어야 하며 `studygroup_test` DB를 사용한다. 시작할 때 테스트 DB에 마이그레이션이 자동 적용된다.
 - lint / 타입 체크: `pnpm lint` / `pnpm typecheck`
 - 포맷: `pnpm format` (검사만: `pnpm format:check`)
 - 프로덕션 빌드: `pnpm build`

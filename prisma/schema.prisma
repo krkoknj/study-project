@@ -1,4 +1,6 @@
-// 도메인 모델은 로드맵 2단계(DB 스키마 설계)에서 추가한다.
+// DB 이름 규칙: 테이블·컬럼·enum 타입 모두 snake_case (@map / @@map).
+// 시각은 모두 timestamptz로 저장한다.
+// 설계 배경은 docs/erd.md, docs/decisions.md 참고.
 
 generator client {
   provider = "prisma-client"
@@ -7,4 +9,160 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+enum RecruitmentType {
+  STUDY
+  PROJECT
+
+  @@map("recruitment_type")
+}
+
+enum MeetingMode {
+  ONLINE
+  OFFLINE
+  HYBRID
+
+  @@map("meeting_mode")
+}
+
+enum RecruitmentStatus {
+  OPEN
+  CLOSED
+
+  @@map("recruitment_status")
+}
+
+enum ApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELED
+
+  @@map("application_status")
+}
+
+// 컬럼 구성은 Auth.js 어댑터가 기대하는 형태(name, email, emailVerified, image)를 따른다.
+// 비밀번호·세션 관련 테이블은 3단계에서 인증 방식을 정한 뒤 추가한다.
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?   @db.VarChar(50)
+  emailVerified DateTime? @map("email_verified") @db.Timestamptz(3)
+  image         String?
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  recruitments Recruitment[]
+  applications Application[]
+  comments     Comment[]
+  bookmarks    Bookmark[]
+
+  @@map("users")
+}
+
+model Recruitment {
+  id        String            @id @default(cuid())
+  authorId  String            @map("author_id")
+  title     String            @db.VarChar(100)
+  content   String
+  type      RecruitmentType
+  // CHECK (capacity >= 1) 은 마이그레이션 SQL에 직접 추가했다.
+  capacity  Int
+  mode      MeetingMode
+  region    String?           @db.VarChar(50)
+  deadline  DateTime          @db.Timestamptz(3)
+  status    RecruitmentStatus @default(OPEN)
+  closedAt  DateTime?         @map("closed_at") @db.Timestamptz(3)
+  deletedAt DateTime?         @map("deleted_at") @db.Timestamptz(3)
+  createdAt DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  author       User             @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  tags         RecruitmentTag[]
+  applications Application[]
+  comments     Comment[]
+  bookmarks    Bookmark[]
+
+  @@index([authorId])
+  @@map("recruitments")
+}
+
+model Tag {
+  id        String   @id @default(cuid())
+  // 소문자로 정규화한 값을 저장한다 (정규화는 애플리케이션에서 수행).
+  name      String   @unique @db.VarChar(30)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  recruitments RecruitmentTag[]
+
+  @@map("tags")
+}
+
+model RecruitmentTag {
+  recruitmentId String @map("recruitment_id")
+  tagId         String @map("tag_id")
+
+  recruitment Recruitment @relation(fields: [recruitmentId], references: [id], onDelete: Cascade)
+  tag         Tag         @relation(fields: [tagId], references: [id], onDelete: Restrict)
+
+  @@id([recruitmentId, tagId])
+  // 복합 PK는 recruitment_id로 시작하므로 "이 태그가 달린 글" 조회용 인덱스가 따로 필요하다.
+  @@index([tagId])
+  @@map("recruitment_tags")
+}
+
+model Application {
+  id            String            @id @default(cuid())
+  recruitmentId String            @map("recruitment_id")
+  applicantId   String            @map("applicant_id")
+  message       String            @db.VarChar(500)
+  status        ApplicationStatus @default(PENDING)
+  decidedAt     DateTime?         @map("decided_at") @db.Timestamptz(3)
+  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  recruitment Recruitment @relation(fields: [recruitmentId], references: [id], onDelete: Restrict)
+  applicant   User        @relation(fields: [applicantId], references: [id], onDelete: Restrict)
+
+  // 불변 조건: 한 사용자는 같은 모집글에 한 번만 신청할 수 있다 (취소·거절 후 재신청 불가).
+  @@unique([recruitmentId, applicantId])
+  @@index([applicantId])
+  @@map("applications")
+}
+
+model Comment {
+  id            String    @id @default(cuid())
+  recruitmentId String    @map("recruitment_id")
+  authorId      String    @map("author_id")
+  // null이면 댓글, 값이 있으면 그 댓글의 대댓글.
+  parentId      String?   @map("parent_id")
+  content       String    @db.VarChar(1000)
+  deletedAt     DateTime? @map("deleted_at") @db.Timestamptz(3)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  recruitment Recruitment @relation(fields: [recruitmentId], references: [id], onDelete: Restrict)
+  author      User        @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  parent      Comment?    @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Restrict)
+  replies     Comment[]   @relation("CommentReplies")
+
+  @@index([recruitmentId])
+  @@index([authorId])
+  @@index([parentId])
+  @@map("comments")
+}
+
+model Bookmark {
+  userId        String   @map("user_id")
+  recruitmentId String   @map("recruitment_id")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recruitment Recruitment @relation(fields: [recruitmentId], references: [id], onDelete: Cascade)
+
+  // 복합 PK가 "같은 글을 두 번 찜할 수 없다"를 보장한다.
+  @@id([userId, recruitmentId])
+  @@index([recruitmentId])
+  @@map("bookmarks")
 }
