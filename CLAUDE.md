@@ -42,6 +42,10 @@
 - 테스트: Vitest (단위/통합), Playwright (E2E, 후반부)
 - 로컬 개발: Docker Compose로 PostgreSQL 실행
 
+Next.js 코드를 작성하기 전에 아래 파일의 지침(설치된 버전의 공식 문서 확인)을 따른다.
+
+@AGENTS.md
+
 # 작업 방식 (가장 중요)
 
 - 나는 이 프로젝트로 **학습**하는 중이다. 코드를 작성하기 전에 무엇을 왜 그렇게 하는지 짧게 설명해줘.
@@ -95,9 +99,12 @@
 
 # 자주 쓰는 명령어
 
-(세팅 후 실제 명령어로 채워줘)
-- 개발 서버:
-- DB 실행:
-- 마이그레이션:
-- 테스트:
-- lint / 타입 체크:
+패키지 매니저는 pnpm을 사용한다. 최초 1회 `.env.example`을 `.env`로 복사한다.
+
+- 개발 서버: `pnpm dev` (3000 포트가 사용 중이면 `pnpm dev --port 3001`)
+- DB 실행: `pnpm db:up` (중지: `pnpm db:down`, 볼륨은 유지된다)
+- 마이그레이션: `pnpm db:migrate` (Prisma 클라이언트만 다시 생성: `pnpm db:generate`)
+- 테스트: `pnpm test` (감시 모드: `pnpm test:watch`). DB가 실행 중이어야 하며 `studygroup_test` DB를 사용한다.
+- lint / 타입 체크: `pnpm lint` / `pnpm typecheck`
+- 포맷: `pnpm format` (검사만: `pnpm format:check`)
+- 프로덕션 빌드: `pnpm build`

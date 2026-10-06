@@ -1,0 +1,10 @@
+// 도메인 모델은 로드맵 2단계(DB 스키마 설계)에서 추가한다.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}

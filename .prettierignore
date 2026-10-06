@@ -1,0 +1,10 @@
+.next
+node_modules
+pnpm-lock.yaml
+src/generated
+prisma/migrations
+next-env.d.ts
+
+# 에이전트 지침 파일은 사람이 쓴 형식을 그대로 둔다 (AGENTS.md는 next dev가 다시 생성)
+AGENTS.md
+CLAUDE.md
