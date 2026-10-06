@@ -15,6 +15,7 @@ export async function SiteHeader() {
         </Link>
         {session ? (
           <div className="flex items-center gap-4">
+            <Link href="/recruitments/new">모집글 작성</Link>
             <span>{session.name}님</span>
             <form action={logoutAction}>
               <button type="submit" className="text-zinc-500 underline">
