@@ -13,6 +13,7 @@ import {
   deleteRecruitment,
   getRecruitment,
   listRecruitments,
+  type RecruitmentPage,
   updateRecruitment,
 } from "@/server/recruitments/recruitment.service";
 import { resetDb } from "@/test/db";
@@ -93,7 +94,7 @@ describe("listRecruitments", () => {
     const first = await createRecruitment(authorId, { ...input, title: "첫 번째 글" });
     const second = await createRecruitment(otherId, { ...input, title: "두 번째 글" });
 
-    const list = await listRecruitments();
+    const { items: list } = await listRecruitments();
 
     expect(list.map((item) => item.id)).toEqual([second.id, first.id]);
     expect(list[0]).not.toHaveProperty("content");
@@ -104,7 +105,7 @@ describe("listRecruitments", () => {
     await createRecruitment(authorId, input);
     await createRecruitment(authorId, input);
 
-    expect(await listRecruitments(undefined, { limit: 2 })).toHaveLength(2);
+    expect((await listRecruitments(undefined, { pageSize: 2 })).items).toHaveLength(2);
   });
 });
 
@@ -189,7 +190,7 @@ describe("삭제된 글은 없는 글로 취급한다", () => {
   });
 
   it("목록에 나오지 않는다", async () => {
-    expect((await listRecruitments()).map((item) => item.id)).toEqual([remainingId]);
+    expect((await listRecruitments()).items.map((item) => item.id)).toEqual([remainingId]);
   });
 
   it("작성자도 수정할 수 없고 NOT_FOUND다", async () => {
@@ -223,7 +224,7 @@ describe("태그 저장", () => {
     const { id } = await createRecruitment(authorId, { ...input, tags: ["typescript", "react"] });
 
     expect((await getRecruitment(id))?.tags).toEqual(["react", "typescript"]);
-    expect((await listRecruitments())[0]?.tags).toEqual(["react", "typescript"]);
+    expect((await listRecruitments()).items[0]?.tags).toEqual(["react", "typescript"]);
   });
 
   it("이미 있는 태그는 새로 만들지 않고 재사용한다", async () => {
@@ -329,7 +330,7 @@ describe("목록 필터", () => {
   const past = new Date("2026-10-01T14:59:59.999Z");
 
   async function titles(filter: Partial<RecruitmentFilter>) {
-    const list = await listRecruitments({ ...noFilter, ...filter }, { now });
+    const { items: list } = await listRecruitments({ ...noFilter, ...filter }, { now });
     return list.map((item) => item.title).sort();
   }
 
@@ -419,7 +420,7 @@ describe("목록 필터", () => {
   });
 
   it("모집중만 보기의 결과는 isRecruiting 판정과 일치한다", async () => {
-    const all = await listRecruitments(noFilter, { now });
+    const { items: all } = await listRecruitments(noFilter, { now });
     const expected = all.filter((item) => isRecruiting(item, now)).map((item) => item.title);
 
     expect(await titles({ openOnly: true })).toEqual(expected.sort());
@@ -432,5 +433,117 @@ describe("목록 필터", () => {
     expect(await titles({ type: "STUDY", mode: "ONLINE", tags: ["typescript"] })).toEqual([
       "A 스터디 온라인",
     ]);
+  });
+});
+
+// 작성 시각이 1초씩 늦어지는 글을 만든다. "글 001"이 가장 오래된 글이다.
+async function seedPosts(count: number, startNumber = 1) {
+  await prisma.recruitment.createMany({
+    data: Array.from({ length: count }, (_, index) => ({
+      ...columns,
+      authorId,
+      title: `글 ${String(startNumber + index).padStart(3, "0")}`,
+      createdAt: new Date(Date.UTC(2026, 0, 1, 0, 0, startNumber + index)),
+    })),
+  });
+}
+
+const titlesOf = (page: RecruitmentPage) => page.items.map((item) => item.title);
+
+describe("페이지네이션 (오프셋)", () => {
+  it("페이지 크기만큼 최신 글부터 잘라서 돌려주고 전체 개수를 함께 알려 준다", async () => {
+    await seedPosts(45);
+
+    const first = await listRecruitments(noFilter, { page: 1 });
+    const third = await listRecruitments(noFilter, { page: 3 });
+
+    expect(first.totalCount).toBe(45);
+    expect(first.items).toHaveLength(20);
+    expect(titlesOf(first)[0]).toBe("글 045");
+    expect(titlesOf(first)[19]).toBe("글 026");
+    expect(titlesOf(third)).toEqual(["글 005", "글 004", "글 003", "글 002", "글 001"]);
+  });
+
+  it("마지막 페이지를 넘어가면 빈 목록을 돌려주고 전체 개수는 그대로다", async () => {
+    await seedPosts(45);
+
+    const beyond = await listRecruitments(noFilter, { page: 4 });
+
+    expect(beyond.items).toEqual([]);
+    expect(beyond.totalCount).toBe(45);
+  });
+
+  it("전체 개수는 필터를 반영하고 삭제된 글을 세지 않는다", async () => {
+    await seedPosts(5);
+    await createRecruitment(authorId, { ...input, type: "PROJECT" });
+    const target = await prisma.recruitment.findFirstOrThrow({ where: { title: "글 003" } });
+    await deleteRecruitment(authorId, target.id);
+
+    expect((await listRecruitments(noFilter)).totalCount).toBe(5);
+    expect((await listRecruitments({ ...noFilter, type: "STUDY" })).totalCount).toBe(4);
+    expect((await listRecruitments({ ...noFilter, type: "PROJECT" })).totalCount).toBe(1);
+  });
+
+  it("글이 바뀌지 않는 동안에는 페이지를 이어 붙이면 모든 글이 한 번씩 순서대로 나온다", async () => {
+    await seedPosts(45);
+
+    const pages = await Promise.all(
+      [1, 2, 3, 4, 5, 6, 7].map((page) => listRecruitments(noFilter, { page, pageSize: 7 })),
+    );
+
+    const expected = Array.from(
+      { length: 45 },
+      (_, index) => `글 ${String(45 - index).padStart(3, "0")}`,
+    );
+    expect(pages.flatMap(titlesOf)).toEqual(expected);
+  });
+
+  it("작성 시각이 같은 글들도 페이지 사이에서 겹치거나 빠지지 않는다", async () => {
+    const sameTime = new Date("2026-01-01T00:00:00Z");
+    await prisma.recruitment.createMany({
+      data: Array.from({ length: 5 }, (_, index) => ({
+        ...columns,
+        authorId,
+        title: `동시 ${index}`,
+        createdAt: sameTime,
+      })),
+    });
+
+    const pages = await Promise.all(
+      [1, 2, 3].map((page) => listRecruitments(noFilter, { page, pageSize: 2 })),
+    );
+
+    expect(new Set(pages.flatMap(titlesOf)).size).toBe(5);
+  });
+});
+
+// 아래 테스트들은 "문제가 있다"는 것을 단언한다. 커서 방식으로 바꾸면 기대값이 달라져야 한다.
+describe("오프셋 방식의 한계", () => {
+  it("1페이지를 읽은 뒤 새 글이 올라오면 2페이지에 1페이지의 마지막 글이 다시 나온다", async () => {
+    await seedPosts(6);
+    const first = await listRecruitments(noFilter, { page: 1, pageSize: 3 });
+    expect(titlesOf(first)).toEqual(["글 006", "글 005", "글 004"]);
+
+    await seedPosts(1, 7); // 그 사이 새 글 "글 007"이 올라온다
+
+    const second = await listRecruitments(noFilter, { page: 2, pageSize: 3 });
+
+    // 사용자가 기대한 것은 ["글 003", "글 002", "글 001"]이다.
+    expect(titlesOf(second)).toEqual(["글 004", "글 003", "글 002"]);
+  });
+
+  it("1페이지를 읽은 뒤 그 페이지의 글이 삭제되면 글 하나가 어느 페이지에도 나오지 않는다", async () => {
+    await seedPosts(6);
+    const first = await listRecruitments(noFilter, { page: 1, pageSize: 3 });
+    expect(titlesOf(first)).toEqual(["글 006", "글 005", "글 004"]);
+
+    const target = await prisma.recruitment.findFirstOrThrow({ where: { title: "글 005" } });
+    await deleteRecruitment(authorId, target.id);
+
+    const second = await listRecruitments(noFilter, { page: 2, pageSize: 3 });
+
+    // "글 003"이 1페이지 자리로 당겨져서 사용자는 이 글을 보지 못한다.
+    expect(titlesOf(second)).toEqual(["글 002", "글 001"]);
+    expect([...titlesOf(first), ...titlesOf(second)]).not.toContain("글 003");
   });
 });

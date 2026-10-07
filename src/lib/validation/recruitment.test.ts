@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   noFilter,
+  parsePage,
   parseRecruitmentFilter,
   recruitmentIdSchema,
   recruitmentSchema,
@@ -235,6 +236,40 @@ describe("toFilterQuery", () => {
         open: params.get("open"),
       }),
     ).toEqual(filter);
+  });
+});
+
+describe("parsePage", () => {
+  it.each([
+    ["1", 1],
+    ["7", 7],
+    [" 3 ", 3],
+    ["100000", 100000],
+  ])("%j는 %i페이지다", (value, expected) => {
+    expect(parsePage(value)).toBe(expected);
+  });
+
+  it.each([
+    ["없음", undefined],
+    ["빈 문자열", ""],
+    ["0", "0"],
+    ["음수", "-2"],
+    ["소수", "2.5"],
+    ["숫자가 아님", "abc"],
+    ["상한 초과", "100001"],
+    ["지수 표기로 상한 초과", "1e20"],
+    ["반복된 값", ["2", "3"]],
+    ["null", null],
+  ])("잘못된 값(%s)은 1페이지로 처리한다", (_label, value) => {
+    expect(parsePage(value)).toBe(1);
+  });
+});
+
+describe("toFilterQuery의 페이지", () => {
+  it("1페이지는 주소에 넣지 않고 2페이지부터 넣는다", () => {
+    expect(toFilterQuery(noFilter, 1)).toBe("");
+    expect(toFilterQuery(noFilter, 3)).toBe("page=3");
+    expect(toFilterQuery({ ...noFilter, type: "STUDY" }, 2)).toBe("type=STUDY&page=2");
   });
 });
 
