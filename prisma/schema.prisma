@@ -90,7 +90,8 @@ model Recruitment {
 
 model Tag {
   id        String   @id @default(cuid())
-  // 소문자로 정규화한 값을 저장한다 (정규화는 애플리케이션에서 수행).
+  // 소문자로 정규화한 값을 저장한다. 정규화는 애플리케이션에서 수행하고,
+  // CHECK (name = lower(btrim(name)) AND name <> '') 를 마이그레이션 SQL에 직접 추가했다.
   name      String   @unique @db.VarChar(30)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 

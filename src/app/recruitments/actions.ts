@@ -24,6 +24,7 @@ function parseForm(formData: FormData) {
     mode: formData.get("mode"),
     region: formData.get("region"),
     deadline: formData.get("deadline"),
+    tags: formData.get("tags"),
   });
 }
 
