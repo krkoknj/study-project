@@ -3,12 +3,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { cache } from "react";
 
+import { TagList } from "@/components/tag-list";
 import { formatKstDate } from "@/lib/date";
 import {
   meetingModeLabels,
   recruitmentStatusLabels,
   recruitmentTypeLabels,
 } from "@/lib/recruitment-labels";
+import { displayStatus } from "@/lib/recruitment-status";
 import { getSession } from "@/server/auth/session";
 import { getRecruitment } from "@/server/recruitments/recruitment.service";
 
@@ -40,12 +42,14 @@ export default async function RecruitmentPage({ params }: PageProps<"/recruitmen
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 p-6">
       <header className="flex flex-col gap-2">
         <p className="text-sm text-zinc-500">
-          {recruitmentTypeLabels[recruitment.type]} · {recruitmentStatusLabels[recruitment.status]}
+          {recruitmentTypeLabels[recruitment.type]} ·{" "}
+          {recruitmentStatusLabels[displayStatus(recruitment, new Date())]}
         </p>
         <h1 className="text-2xl font-semibold">{recruitment.title}</h1>
         <p className="text-sm text-zinc-500">
           {recruitment.author.name} · {formatKstDate(recruitment.createdAt)} 작성
         </p>
+        <TagList tags={recruitment.tags} />
       </header>
 
       <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 rounded-md border border-zinc-200 p-4 text-sm dark:border-zinc-800">

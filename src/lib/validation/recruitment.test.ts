@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { recruitmentIdSchema, recruitmentSchema } from "@/lib/validation/recruitment";
+import {
+  noFilter,
+  parseRecruitmentFilter,
+  recruitmentIdSchema,
+  recruitmentSchema,
+  toFilterQuery,
+} from "@/lib/validation/recruitment";
 
 // 폼이 보내는 형태 그대로 (모든 값이 문자열)
 const valid = {
@@ -37,6 +43,29 @@ describe("recruitmentSchema", () => {
       mode: "OFFLINE",
       region: "서울 강남",
       deadline: new Date("2026-10-20T14:59:59.999Z"),
+      tags: [],
+    });
+  });
+
+  describe("태그", () => {
+    it("한 줄 입력을 정규화된 태그 목록으로 바꾼다", () => {
+      const result = recruitmentSchema.parse({ ...valid, tags: "React, TypeScript react" });
+
+      expect(result.tags).toEqual(["react", "typescript"]);
+    });
+
+    it("태그가 6개면 거부한다", () => {
+      expect(fieldsWithErrors({ ...valid, tags: "a b c d e f" })).toEqual(["tags"]);
+    });
+
+    it("허용하지 않는 문자가 있으면 거부한다", () => {
+      expect(fieldsWithErrors({ ...valid, tags: "react <script>" })).toEqual(["tags"]);
+    });
+
+    it("태그 오류도 다른 필드의 오류와 함께 알려 준다", () => {
+      const fields = fieldsWithErrors({ ...valid, title: "a", region: "", tags: "a/b" });
+
+      expect(fields.sort()).toEqual(["region", "tags", "title"]);
     });
   });
 
@@ -134,6 +163,78 @@ describe("여러 필드가 동시에 틀린 경우", () => {
     });
 
     expect(fields.sort()).toEqual(["capacity", "content", "deadline", "region", "title"]);
+  });
+});
+
+describe("parseRecruitmentFilter", () => {
+  it("쿼리스트링이 없으면 필터가 없다", () => {
+    expect(parseRecruitmentFilter({})).toEqual(noFilter);
+  });
+
+  it("유형, 진행 방식, 태그, 모집중 여부를 읽는다", () => {
+    expect(
+      parseRecruitmentFilter({ type: "STUDY", mode: "ONLINE", tag: "react", open: "1" }),
+    ).toEqual({ type: "STUDY", mode: "ONLINE", tags: ["react"], openOnly: true });
+  });
+
+  it("태그는 반복된 값과 구분자로 이어 쓴 값을 모두 받고 정규화한다", () => {
+    expect(parseRecruitmentFilter({ tag: ["React", "typescript"] }).tags).toEqual([
+      "react",
+      "typescript",
+    ]);
+    expect(parseRecruitmentFilter({ tag: "React, typescript react" }).tags).toEqual([
+      "react",
+      "typescript",
+    ]);
+  });
+
+  it("정의되지 않은 값은 오류 없이 무시한다", () => {
+    expect(
+      parseRecruitmentFilter({ type: "PARTY", mode: ["ONLINE", "OFFLINE"], open: "yes" }),
+    ).toEqual(noFilter);
+  });
+
+  it("규칙에 맞지 않는 태그는 버리고 최대 5개까지만 쓴다", () => {
+    expect(parseRecruitmentFilter({ tag: "react <script> a/b" }).tags).toEqual(["react"]);
+    expect(parseRecruitmentFilter({ tag: "a b c d e f g" }).tags).toEqual([
+      "a",
+      "b",
+      "c",
+      "d",
+      "e",
+    ]);
+  });
+
+  it("객체가 아닌 입력도 필터 없음으로 처리한다", () => {
+    expect(parseRecruitmentFilter(null)).toEqual(noFilter);
+  });
+});
+
+describe("toFilterQuery", () => {
+  it("기본값인 항목은 주소에 넣지 않는다", () => {
+    expect(toFilterQuery(noFilter)).toBe("");
+  });
+
+  it("특수문자가 있는 태그를 인코딩하고, 다시 읽으면 같은 필터가 된다", () => {
+    const filter = {
+      type: "PROJECT",
+      mode: "HYBRID",
+      tags: ["c++", "c#"],
+      openOnly: true,
+    } as const;
+
+    const query = toFilterQuery({ ...filter, tags: [...filter.tags] });
+
+    expect(query).toBe("type=PROJECT&mode=HYBRID&tag=c%2B%2B&tag=c%23&open=1");
+    const params = new URLSearchParams(query);
+    expect(
+      parseRecruitmentFilter({
+        type: params.get("type"),
+        mode: params.get("mode"),
+        tag: params.getAll("tag"),
+        open: params.get("open"),
+      }),
+    ).toEqual(filter);
   });
 });
 

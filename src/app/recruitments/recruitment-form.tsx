@@ -16,6 +16,7 @@ export type RecruitmentFormValues = {
   mode: MeetingMode;
   region: string;
   deadline: string;
+  tags: string;
 };
 
 type RecruitmentFormProps = {
@@ -112,6 +113,15 @@ export function RecruitmentForm({
         value={values.deadline}
         onChange={(event) => set("deadline", event.target.value)}
         errors={error?.fieldErrors?.deadline}
+      />
+      <TextField
+        name="tags"
+        label="기술 스택 태그"
+        maxLength={200}
+        hint="쉼표나 공백으로 구분해 최대 5개. 예: react, typescript"
+        value={values.tags}
+        onChange={(event) => set("tags", event.target.value)}
+        errors={error?.fieldErrors?.tags}
       />
       <TextareaField
         name="content"

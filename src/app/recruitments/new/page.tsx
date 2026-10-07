@@ -25,6 +25,7 @@ export default async function NewRecruitmentPage() {
           mode: "ONLINE",
           region: "",
           deadline: "",
+          tags: "",
         }}
         minDeadline={toKstIsoDate(new Date())}
         submitLabel="작성하기"

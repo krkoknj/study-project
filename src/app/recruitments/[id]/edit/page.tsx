@@ -35,6 +35,7 @@ export default async function EditRecruitmentPage({
           mode: recruitment.mode,
           region: recruitment.region ?? "",
           deadline: toKstIsoDate(recruitment.deadline),
+          tags: recruitment.tags.join(", "),
         }}
         minDeadline={toKstIsoDate(new Date())}
         submitLabel="수정하기"
