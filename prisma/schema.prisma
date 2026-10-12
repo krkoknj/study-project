@@ -85,6 +85,9 @@ model Recruitment {
   bookmarks    Bookmark[]
 
   @@index([authorId])
+  // 목록의 정렬 순서와 같은 인덱스. 커서 방식 페이지네이션이 "커서 다음 20건"만 읽게 해 준다.
+  // 측정 결과는 docs/pagination.md 참고.
+  @@index([createdAt(sort: Desc), id(sort: Desc)])
   @@map("recruitments")
 }
 

@@ -113,25 +113,13 @@ export function parseRecruitmentFilter(params: unknown): RecruitmentFilter {
 }
 
 // 필터 → 쿼리스트링. 기본값인 항목은 주소에 넣지 않는다.
-// page를 넘기면 그 페이지로 가는 주소가 된다. 넘기지 않으면 첫 페이지다.
-export function toFilterQuery(filter: RecruitmentFilter, page = 1): string {
+// cursor를 넘기면 그 위치 다음부터 보여 주는 주소가 된다. 넘기지 않으면 첫 페이지다.
+export function toFilterQuery(filter: RecruitmentFilter, cursor?: string): string {
   const query = new URLSearchParams();
   if (filter.type) query.set("type", filter.type);
   if (filter.mode) query.set("mode", filter.mode);
   for (const tag of filter.tags) query.append("tag", tag);
   if (filter.openOnly) query.set("open", "1");
-  if (page > 1) query.set("page", String(page));
+  if (cursor) query.set("cursor", cursor);
   return query.toString();
-}
-
-// --- 페이지 번호 ---
-
-// 건너뛸 행 수(page * 20)가 DB의 정수 범위를 넘지 않도록 상한을 둔다.
-const MAX_PAGE = 100_000;
-
-const pageSchema = z.coerce.number().int().min(1).max(MAX_PAGE).catch(1);
-
-// 숫자가 아니거나 범위를 벗어난 값은 오류 없이 1페이지로 처리한다.
-export function parsePage(value: unknown): number {
-  return pageSchema.parse(value);
 }

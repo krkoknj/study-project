@@ -97,23 +97,24 @@ erDiagram
 
 ## 인덱스
 
-유니크 제약과 외래 키 인덱스만 두었다. PostgreSQL은 외래 키 컬럼에 인덱스를 자동으로 만들지 않는다.
-목록 정렬·필터·검색용 인덱스는 6·12·13단계에서 느린 쿼리를 측정한 뒤 추가한다.
+유니크 제약과 외래 키 인덱스, 그리고 목록 정렬용 인덱스 하나를 두었다. PostgreSQL은 외래 키 컬럼에 인덱스를 자동으로 만들지 않는다.
+필터·검색용 인덱스는 12·13단계에서 느린 쿼리를 측정한 뒤 추가한다.
 
-| 인덱스                                         | 종류      | 용도                                               |
-| ---------------------------------------------- | --------- | -------------------------------------------------- |
-| `users_email_key`                              | 유니크    | 이메일 중복 방지, 로그인 조회                      |
-| `recruitments_author_id_idx`                   | 일반      | 내가 쓴 모집글 조회                                |
-| `tags_name_key`                                | 유니크    | 태그 중복 방지, 이름으로 태그 찾기                 |
-| `recruitment_tags_pkey`                        | PK (복합) | 모집글의 태그 조회 (`recruitment_id`로 시작)       |
-| `recruitment_tags_tag_id_idx`                  | 일반      | 태그로 모집글 필터 (PK가 `tag_id`로 시작하지 않음) |
-| `applications_recruitment_id_applicant_id_key` | 유니크    | 중복 신청 방지, 모집글의 신청 목록 조회            |
-| `applications_applicant_id_idx`                | 일반      | 내가 신청한 목록 조회                              |
-| `comments_recruitment_id_idx`                  | 일반      | 모집글의 댓글 조회                                 |
-| `comments_author_id_idx`                       | 일반      | 외래 키 검사, 내가 쓴 댓글 조회                    |
-| `comments_parent_id_idx`                       | 일반      | 대댓글 조회, 부모 댓글 삭제 시 외래 키 검사        |
-| `bookmarks_pkey`                               | PK (복합) | 중복 찜 방지, 내가 찜한 목록 조회                  |
-| `bookmarks_recruitment_id_idx`                 | 일반      | 모집글 삭제 시 연쇄 삭제, 찜 수 집계               |
+| 인덱스                                         | 종류            | 용도                                                                   |
+| ---------------------------------------------- | --------------- | ---------------------------------------------------------------------- |
+| `users_email_key`                              | 유니크          | 이메일 중복 방지, 로그인 조회                                          |
+| `recruitments_author_id_idx`                   | 일반            | 내가 쓴 모집글 조회                                                    |
+| `recruitments_created_at_id_idx`               | 일반 (내림차순) | 목록의 정렬 순서. 커서 방식 페이지네이션의 전제 (`docs/pagination.md`) |
+| `tags_name_key`                                | 유니크          | 태그 중복 방지, 이름으로 태그 찾기                                     |
+| `recruitment_tags_pkey`                        | PK (복합)       | 모집글의 태그 조회 (`recruitment_id`로 시작)                           |
+| `recruitment_tags_tag_id_idx`                  | 일반            | 태그로 모집글 필터 (PK가 `tag_id`로 시작하지 않음)                     |
+| `applications_recruitment_id_applicant_id_key` | 유니크          | 중복 신청 방지, 모집글의 신청 목록 조회                                |
+| `applications_applicant_id_idx`                | 일반            | 내가 신청한 목록 조회                                                  |
+| `comments_recruitment_id_idx`                  | 일반            | 모집글의 댓글 조회                                                     |
+| `comments_author_id_idx`                       | 일반            | 외래 키 검사, 내가 쓴 댓글 조회                                        |
+| `comments_parent_id_idx`                       | 일반            | 대댓글 조회, 부모 댓글 삭제 시 외래 키 검사                            |
+| `bookmarks_pkey`                               | PK (복합)       | 중복 찜 방지, 내가 찜한 목록 조회                                      |
+| `bookmarks_recruitment_id_idx`                 | 일반            | 모집글 삭제 시 연쇄 삭제, 찜 수 집계                                   |
 
 ## 삭제 정책
 
