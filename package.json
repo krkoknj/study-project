@@ -12,6 +12,7 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "measure:pagination": "vitest run --config vitest.measure.config.mts --disable-console-intercept scripts/pagination.measure.ts",
     "db:up": "docker compose up -d --wait --quiet-pull",
     "db:down": "docker compose down",
     "db:generate": "prisma generate",

@@ -1,41 +1,41 @@
 import { describe, expect, it } from "vitest";
 
-import { countPages, pageWindow } from "@/lib/pagination";
+import { decodeCursor, encodeCursor } from "@/lib/pagination";
 
-describe("countPages", () => {
-  it.each([
-    [0, 1],
-    [1, 1],
-    [20, 1],
-    [21, 2],
-    [40, 2],
-    [41, 3],
-  ])("글이 %i건이면 %i페이지다", (totalCount, expected) => {
-    expect(countPages(totalCount)).toBe(expected);
+const cursor = { createdAt: new Date("2026-10-20T14:59:59.123Z"), id: "cmgf1x2y30000abcd1234efgh" };
+
+describe("커서 인코딩", () => {
+  it("인코딩한 값을 다시 풀면 같은 위치가 된다 (밀리초까지 유지)", () => {
+    expect(decodeCursor(encodeCursor(cursor))).toEqual(cursor);
+  });
+
+  it("주소에 그대로 넣을 수 있는 문자만 쓴다", () => {
+    expect(encodeCursor(cursor)).toMatch(/^[A-Za-z0-9_-]+$/);
   });
 });
 
-describe("pageWindow", () => {
-  it("현재 페이지를 가운데에 두고 앞뒤 2개씩 보여 준다", () => {
-    expect(pageWindow(6, 10)).toEqual([4, 5, 6, 7, 8]);
-  });
+describe("잘못된 커서", () => {
+  const encode = (payload: unknown) => Buffer.from(JSON.stringify(payload)).toString("base64url");
 
-  it("앞쪽 끝에서는 1부터 5개를 보여 준다", () => {
-    expect(pageWindow(1, 10)).toEqual([1, 2, 3, 4, 5]);
-    expect(pageWindow(2, 10)).toEqual([1, 2, 3, 4, 5]);
-  });
-
-  it("뒤쪽 끝에서는 마지막 5개를 보여 준다", () => {
-    expect(pageWindow(10, 10)).toEqual([6, 7, 8, 9, 10]);
-    expect(pageWindow(9, 10)).toEqual([6, 7, 8, 9, 10]);
-  });
-
-  it("전체 페이지가 5개보다 적으면 있는 만큼만 보여 준다", () => {
-    expect(pageWindow(1, 1)).toEqual([1]);
-    expect(pageWindow(2, 3)).toEqual([1, 2, 3]);
-  });
-
-  it("범위를 벗어난 현재 페이지에서도 존재하는 페이지만 돌려준다", () => {
-    expect(pageWindow(99, 3)).toEqual([1, 2, 3]);
+  it.each([
+    ["없음", undefined],
+    ["null", null],
+    ["빈 문자열", ""],
+    ["반복된 값", ["a", "b"]],
+    ["base64가 아닌 문자열", "!!!not-base64!!!"],
+    ["JSON이 아닌 내용", Buffer.from("hello").toString("base64url")],
+    ["배열이 아닌 JSON", encode({ createdAt: 1, id: "a" })],
+    ["요소가 하나뿐", encode([1])],
+    ["요소가 셋", encode([1, "a", "b"])],
+    ["시각이 문자열", encode(["2026-01-01", "a"])],
+    ["시각이 음수", encode([-1, "a"])],
+    ["시각이 소수", encode([1.5, "a"])],
+    ["시각이 Date 범위 밖", encode([9e15, "a"])],
+    ["id가 빈 문자열", encode([1, ""])],
+    ["id가 숫자", encode([1, 2])],
+    ["id가 너무 김", encode([1, "a".repeat(65)])],
+    ["전체가 너무 김", "a".repeat(201)],
+  ])("%s이면 null을 돌려준다", (_label, value) => {
+    expect(decodeCursor(value)).toBeNull();
   });
 });

@@ -1,6 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
 import type { Prisma } from "@/generated/prisma/client";
+import type { Cursor } from "@/lib/pagination";
 import { isRecruiting } from "@/lib/recruitment-status";
 import {
   noFilter,
@@ -450,100 +451,148 @@ async function seedPosts(count: number, startNumber = 1) {
 
 const titlesOf = (page: RecruitmentPage) => page.items.map((item) => item.title);
 
-describe("페이지네이션 (오프셋)", () => {
-  it("페이지 크기만큼 최신 글부터 잘라서 돌려주고 전체 개수를 함께 알려 준다", async () => {
+// 다음 커서를 따라가며 끝까지 읽는다.
+async function readAllPages(pageSize: number, filter: RecruitmentFilter = noFilter) {
+  const pages: RecruitmentPage[] = [];
+  let cursor: Cursor | null = null;
+  do {
+    const page: RecruitmentPage = await listRecruitments(filter, { cursor, pageSize });
+    pages.push(page);
+    cursor = page.nextCursor;
+  } while (cursor && pages.length < 100);
+  return pages;
+}
+
+const numbered = (from: number, to: number) =>
+  Array.from(
+    { length: from - to + 1 },
+    (_, index) => `글 ${String(from - index).padStart(3, "0")}`,
+  );
+
+describe("페이지네이션 (커서)", () => {
+  it("첫 페이지는 최신 글부터 페이지 크기만큼 돌려주고 다음 위치를 알려 준다", async () => {
     await seedPosts(45);
 
-    const first = await listRecruitments(noFilter, { page: 1 });
-    const third = await listRecruitments(noFilter, { page: 3 });
+    const first = await listRecruitments();
 
-    expect(first.totalCount).toBe(45);
-    expect(first.items).toHaveLength(20);
-    expect(titlesOf(first)[0]).toBe("글 045");
-    expect(titlesOf(first)[19]).toBe("글 026");
-    expect(titlesOf(third)).toEqual(["글 005", "글 004", "글 003", "글 002", "글 001"]);
+    expect(titlesOf(first)).toEqual(numbered(45, 26));
+    expect(first.nextCursor).toEqual({
+      createdAt: first.items[19]?.createdAt,
+      id: first.items[19]?.id,
+    });
   });
 
-  it("마지막 페이지를 넘어가면 빈 목록을 돌려주고 전체 개수는 그대로다", async () => {
+  it("다음 위치를 따라 끝까지 넘기면 모든 글이 한 번씩 순서대로 나온다", async () => {
     await seedPosts(45);
 
-    const beyond = await listRecruitments(noFilter, { page: 4 });
+    const pages = await readAllPages(7);
 
-    expect(beyond.items).toEqual([]);
-    expect(beyond.totalCount).toBe(45);
+    expect(pages.flatMap(titlesOf)).toEqual(numbered(45, 1));
+    expect(pages.map((page) => page.items.length)).toEqual([7, 7, 7, 7, 7, 7, 3]);
   });
 
-  it("전체 개수는 필터를 반영하고 삭제된 글을 세지 않는다", async () => {
-    await seedPosts(5);
-    await createRecruitment(authorId, { ...input, type: "PROJECT" });
-    const target = await prisma.recruitment.findFirstOrThrow({ where: { title: "글 003" } });
-    await deleteRecruitment(authorId, target.id);
-
-    expect((await listRecruitments(noFilter)).totalCount).toBe(5);
-    expect((await listRecruitments({ ...noFilter, type: "STUDY" })).totalCount).toBe(4);
-    expect((await listRecruitments({ ...noFilter, type: "PROJECT" })).totalCount).toBe(1);
-  });
-
-  it("글이 바뀌지 않는 동안에는 페이지를 이어 붙이면 모든 글이 한 번씩 순서대로 나온다", async () => {
+  it("마지막 페이지에서는 다음 위치가 없다", async () => {
     await seedPosts(45);
 
-    const pages = await Promise.all(
-      [1, 2, 3, 4, 5, 6, 7].map((page) => listRecruitments(noFilter, { page, pageSize: 7 })),
-    );
+    const pages = await readAllPages(20);
 
-    const expected = Array.from(
-      { length: 45 },
-      (_, index) => `글 ${String(45 - index).padStart(3, "0")}`,
-    );
-    expect(pages.flatMap(titlesOf)).toEqual(expected);
+    expect(pages.map((page) => page.nextCursor !== null)).toEqual([true, true, false]);
   });
 
-  it("작성 시각이 같은 글들도 페이지 사이에서 겹치거나 빠지지 않는다", async () => {
-    const sameTime = new Date("2026-01-01T00:00:00Z");
-    await prisma.recruitment.createMany({
-      data: Array.from({ length: 5 }, (_, index) => ({
+  it("글 수가 페이지 크기의 배수여도 빈 페이지로 이어지지 않는다", async () => {
+    await seedPosts(40);
+
+    const pages = await readAllPages(20);
+
+    expect(pages.map((page) => page.items.length)).toEqual([20, 20]);
+    expect(pages[1]?.nextCursor).toBeNull();
+  });
+
+  it("글이 없으면 빈 목록이고 다음 위치도 없다", async () => {
+    expect(await listRecruitments()).toEqual({ items: [], nextCursor: null });
+  });
+
+  it("작성 시각이 같은 글들 사이에서 페이지가 나뉘어도 겹치거나 빠지지 않는다", async () => {
+    // 같은 시각의 글 3건씩 두 묶음. 페이지 경계가 묶음 한가운데에 놓인다.
+    const data = ["2026-01-01T00:00:01Z", "2026-01-01T00:00:02Z"].flatMap((time) =>
+      [1, 2, 3].map((index) => ({
         ...columns,
         authorId,
-        title: `동시 ${index}`,
-        createdAt: sameTime,
+        title: `${time} #${index}`,
+        createdAt: new Date(time),
       })),
+    );
+    await prisma.recruitment.createMany({ data });
+
+    const paged = (await readAllPages(2)).flatMap(titlesOf);
+    const atOnce = titlesOf(await listRecruitments(noFilter, { pageSize: 100 }));
+
+    expect(paged).toHaveLength(6);
+    expect(paged).toEqual(atOnce);
+  });
+
+  it("필터를 걸고 넘겨도 조건에 맞는 글만 한 번씩 나온다", async () => {
+    await seedPosts(10);
+    await prisma.recruitment.updateMany({
+      where: { title: { in: ["글 002", "글 005", "글 008"] } },
+      data: { type: "PROJECT" },
     });
 
-    const pages = await Promise.all(
-      [1, 2, 3].map((page) => listRecruitments(noFilter, { page, pageSize: 2 })),
-    );
+    const pages = await readAllPages(2, { ...noFilter, type: "PROJECT" });
 
-    expect(new Set(pages.flatMap(titlesOf)).size).toBe(5);
+    expect(pages.flatMap(titlesOf)).toEqual(["글 008", "글 005", "글 002"]);
+  });
+
+  it("커서가 가리키던 글이 삭제되어도 그 지점부터 이어진다", async () => {
+    await seedPosts(6);
+    const first = await listRecruitments(noFilter, { pageSize: 3 });
+    const lastOfFirst = first.items[2];
+    if (!lastOfFirst) throw new Error("첫 페이지가 비어 있습니다.");
+
+    await deleteRecruitment(authorId, lastOfFirst.id); // "글 004" 삭제
+
+    const second = await listRecruitments(noFilter, { cursor: first.nextCursor, pageSize: 3 });
+    expect(titlesOf(second)).toEqual(["글 003", "글 002", "글 001"]);
+  });
+
+  it("어떤 글과도 일치하지 않는 위치를 넘겨도 그 시각 이전의 글부터 돌려준다", async () => {
+    await seedPosts(6);
+    // "글 003"(…00:00:03)과 "글 004"(…00:00:04) 사이의 시각
+    const cursor = { createdAt: new Date(Date.UTC(2026, 0, 1, 0, 0, 3, 500)), id: "zzzz" };
+
+    const page = await listRecruitments(noFilter, { cursor });
+
+    expect(titlesOf(page)).toEqual(["글 003", "글 002", "글 001"]);
   });
 });
 
-// 아래 테스트들은 "문제가 있다"는 것을 단언한다. 커서 방식으로 바꾸면 기대값이 달라져야 한다.
-describe("오프셋 방식의 한계", () => {
-  it("1페이지를 읽은 뒤 새 글이 올라오면 2페이지에 1페이지의 마지막 글이 다시 나온다", async () => {
+// 6단계-1에서 "오프셋 방식의 한계"로 고정했던 두 상황이다. 그때는 아래 주석의
+// "오프셋 방식의 결과"가 기대값이었고, 커서 방식으로 바꾸면서 사용자가 기대하는 결과로 뒤집혔다.
+describe("넘기는 사이 글이 바뀌어도 중복되거나 빠지지 않는다", () => {
+  it("1페이지를 읽은 뒤 새 글이 올라와도 2페이지는 이어지는 글을 보여 준다", async () => {
     await seedPosts(6);
-    const first = await listRecruitments(noFilter, { page: 1, pageSize: 3 });
+    const first = await listRecruitments(noFilter, { pageSize: 3 });
     expect(titlesOf(first)).toEqual(["글 006", "글 005", "글 004"]);
 
     await seedPosts(1, 7); // 그 사이 새 글 "글 007"이 올라온다
 
-    const second = await listRecruitments(noFilter, { page: 2, pageSize: 3 });
+    const second = await listRecruitments(noFilter, { cursor: first.nextCursor, pageSize: 3 });
 
-    // 사용자가 기대한 것은 ["글 003", "글 002", "글 001"]이다.
-    expect(titlesOf(second)).toEqual(["글 004", "글 003", "글 002"]);
+    // 오프셋 방식의 결과: ["글 004", "글 003", "글 002"] (글 004가 중복)
+    expect(titlesOf(second)).toEqual(["글 003", "글 002", "글 001"]);
   });
 
-  it("1페이지를 읽은 뒤 그 페이지의 글이 삭제되면 글 하나가 어느 페이지에도 나오지 않는다", async () => {
+  it("1페이지를 읽은 뒤 그 페이지의 글이 삭제되어도 건너뛰는 글이 없다", async () => {
     await seedPosts(6);
-    const first = await listRecruitments(noFilter, { page: 1, pageSize: 3 });
+    const first = await listRecruitments(noFilter, { pageSize: 3 });
     expect(titlesOf(first)).toEqual(["글 006", "글 005", "글 004"]);
 
     const target = await prisma.recruitment.findFirstOrThrow({ where: { title: "글 005" } });
     await deleteRecruitment(authorId, target.id);
 
-    const second = await listRecruitments(noFilter, { page: 2, pageSize: 3 });
+    const second = await listRecruitments(noFilter, { cursor: first.nextCursor, pageSize: 3 });
 
-    // "글 003"이 1페이지 자리로 당겨져서 사용자는 이 글을 보지 못한다.
-    expect(titlesOf(second)).toEqual(["글 002", "글 001"]);
-    expect([...titlesOf(first), ...titlesOf(second)]).not.toContain("글 003");
+    // 오프셋 방식의 결과: ["글 002", "글 001"] (글 003을 영영 못 봄)
+    expect(titlesOf(second)).toEqual(["글 003", "글 002", "글 001"]);
   });
 });
