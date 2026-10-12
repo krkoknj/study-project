@@ -1,4 +1,5 @@
 import type { Prisma } from "@/generated/prisma/client";
+import { PAGE_SIZE } from "@/lib/pagination";
 import { fail, ok, type Result } from "@/lib/result";
 import {
   noFilter,
@@ -117,30 +118,49 @@ export async function getRecruitment(id: string): Promise<RecruitmentDetail | nu
 type ListOptions = {
   // 모집중 판정의 기준 시각. 테스트에서 고정하기 위해 받는다.
   now?: Date;
-  limit?: number;
+  // 1부터 시작하는 페이지 번호
+  page?: number;
+  pageSize?: number;
 };
 
-// 페이지네이션은 6단계에서 추가한다. 지금은 조건에 맞는 최신 글 일부만 보여 준다.
+export type RecruitmentPage = {
+  items: RecruitmentSummary[];
+  // 필터에 맞는 전체 글 수. 페이지 번호를 만드는 데 쓴다.
+  totalCount: number;
+};
+
+// 오프셋 방식 페이지네이션: 정렬된 결과에서 앞의 (page - 1) * pageSize건을 건너뛰고 가져온다.
+// 알려진 한계 두 가지는 테스트로 고정해 두었다 (recruitment.service.test.ts "오프셋 방식의 한계").
+//   1. 넘기는 사이 글이 추가·삭제되면 위치가 밀려 글이 중복되거나 빠진다.
+//   2. DB가 건너뛸 행도 모두 읽어야 해서 깊은 페이지일수록 느려진다.
 export async function listRecruitments(
   filter: RecruitmentFilter = noFilter,
-  { now = new Date(), limit = 20 }: ListOptions = {},
-): Promise<RecruitmentSummary[]> {
-  const rows = await prisma.recruitment.findMany({
-    where: {
-      ...notDeleted,
-      // 값이 undefined인 조건은 Prisma가 무시한다.
-      type: filter.type,
-      mode: filter.mode,
-      ...(filter.openOnly ? recruitingWhere(now) : {}),
-      // 태그마다 "이 태그가 달려 있다"는 조건을 하나씩 건다. 모두 만족해야 한다 (AND).
-      AND: filter.tags.map((name) => ({ tags: { some: { tag: { name } } } })),
-    },
-    // createdAt이 같은 글의 순서가 매번 달라지지 않도록 id로 한 번 더 정렬한다.
-    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    take: limit,
-    select: summarySelect,
-  });
-  return rows.map(withTagNames);
+  { now = new Date(), page = 1, pageSize = PAGE_SIZE }: ListOptions = {},
+): Promise<RecruitmentPage> {
+  const where = {
+    ...notDeleted,
+    // 값이 undefined인 조건은 Prisma가 무시한다.
+    type: filter.type,
+    mode: filter.mode,
+    ...(filter.openOnly ? recruitingWhere(now) : {}),
+    // 태그마다 "이 태그가 달려 있다"는 조건을 하나씩 건다. 모두 만족해야 한다 (AND).
+    AND: filter.tags.map((name) => ({ tags: { some: { tag: { name } } } })),
+  } satisfies Prisma.RecruitmentWhereInput;
+
+  const [rows, totalCount] = await Promise.all([
+    prisma.recruitment.findMany({
+      where,
+      // createdAt이 같은 글의 순서가 매번 달라지지 않도록 id로 한 번 더 정렬한다.
+      // 정렬이 불안정하면 같은 글이 여러 페이지에 나오거나 어느 페이지에도 안 나올 수 있다.
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      select: summarySelect,
+    }),
+    prisma.recruitment.count({ where }),
+  ]);
+
+  return { items: rows.map(withTagNames), totalCount };
 }
 
 // 권한 조건(author_id)을 WHERE에 넣어 "확인"과 "변경"을 한 문장으로 실행한다.
